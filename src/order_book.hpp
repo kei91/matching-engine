@@ -4,6 +4,7 @@
 
 #include <map>
 #include <unordered_map>
+#include <vector>
 
 class OrderBook {
 public:
@@ -12,6 +13,12 @@ public:
 
     double best_bid() const;
     double best_ask() const;
+
+    std::vector<Trade> match(Order& incoming_order);
+
+private:
+    template<typename mapType, typename matchCheck>
+    std::vector<Trade> matchBook(Order& incoming_order, mapType& book, matchCheck canMatch);
 
 private:
     std::map<double, PriceLevel, std::greater<double>> m_bids;
@@ -53,4 +60,47 @@ inline double OrderBook::best_bid() const {
 
 inline double OrderBook::best_ask() const {
     return m_asks.empty() ? 0.0 : m_asks.begin()->first;
+}
+
+inline std::vector<Trade> OrderBook::match(Order& incoming_order) {
+    return incoming_order.side == Side::Buy 
+            ? matchBook(incoming_order, m_asks, [](double p, double bp) { return p >= bp;}) 
+            : matchBook(incoming_order, m_bids, [](double p, double bp) { return p <= bp;});
+}
+
+template<typename mapType, typename matchCheck>
+std::vector<Trade> OrderBook::matchBook(Order& incoming_order, mapType& book, matchCheck canMatch) {
+    std::vector<Trade> trades;
+
+    while (incoming_order.quantity > 0 &&  !book.empty()) {
+        auto& [bp, pl] = *book.begin();
+        if (!canMatch(incoming_order.price, bp))
+            break;
+
+        Order& order = pl.orders.front();
+
+        uint64_t quantity = std::min(incoming_order.quantity, order.quantity);
+        incoming_order.quantity -= quantity;
+        order.quantity -= quantity;
+        pl.total_quantity -= quantity;
+
+        trades.push_back({
+            incoming_order.side == Side::Buy ? incoming_order.id : order.id,
+            incoming_order.side == Side::Buy ? order.id : incoming_order.id,
+            bp,
+            quantity
+        });
+
+        if (order.quantity == 0) {
+            pl.orders.pop_front();
+            if (pl.orders.empty()) {
+                book.erase(book.begin());
+            }
+        }
+    }
+
+    if (incoming_order.quantity > 0)
+        add(incoming_order);
+
+    return trades;
 }

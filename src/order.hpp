@@ -21,3 +21,10 @@ struct PriceLevel {
     uint64_t total_quantity;
     std::deque<Order> orders;
 };
+
+struct Trade {
+	uint64_t bid_id;
+	uint64_t ask_id;
+	double price;
+	uint64_t quantity;
+};
