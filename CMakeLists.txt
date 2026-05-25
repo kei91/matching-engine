@@ -31,3 +31,10 @@ target_link_libraries(matching_engine_tests GTest::gtest_main)
 
 include(GoogleTest)
 gtest_discover_tests(matching_engine_tests)
+
+find_package(benchmark CONFIG REQUIRED)
+
+add_executable(bench benchmarks/bench_order_book.cpp)
+target_include_directories(bench PRIVATE src)
+target_link_libraries(bench benchmark::benchmark)
+
