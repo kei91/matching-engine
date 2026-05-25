@@ -16,6 +16,7 @@ sudo apt install libbenchmark-dev
 cmake -B build
 cmake --build build
 ```
+## Run
 
 **Run tests:**
 ```bash
