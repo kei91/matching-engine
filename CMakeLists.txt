@@ -6,12 +6,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_compile_options(
-    -O3 -march=native
-    -Wall -Wextra
-    -Wpedantic
-    -Werror
-)
+add_compile_options(-O3 -march=native)
+add_executable(matching_engine src/main.cpp)
+target_compile_options(matching_engine PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 include(FetchContent)
 FetchContent_Declare(
@@ -20,21 +17,29 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
-add_executable(matching_engine src/main.cpp)
-
 enable_testing()
-
 add_executable(matching_engine_tests tests/test_order_book.cpp)
-
 target_include_directories(matching_engine_tests PRIVATE src)
 target_link_libraries(matching_engine_tests GTest::gtest_main)
+target_compile_options(matching_engine_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 include(GoogleTest)
 gtest_discover_tests(matching_engine_tests)
 
-find_package(benchmark CONFIG REQUIRED)
+FetchContent_Declare(
+    googlebenchmark
+    URL https://github.com/google/benchmark/archive/refs/tags/v1.9.5.tar.gz
+)
+set(BENCHMARK_ENABLE_TESTING OFF)
+FetchContent_MakeAvailable(googlebenchmark)
 
 add_executable(bench benchmarks/bench_order_book.cpp)
 target_include_directories(bench PRIVATE src)
 target_link_libraries(bench benchmark::benchmark)
+target_compile_options(bench PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
+add_executable(bench_asan benchmarks/bench_order_book.cpp)
+target_include_directories(bench_asan PRIVATE src)
+target_link_libraries(bench_asan benchmark::benchmark)
+target_compile_options(bench_asan PRIVATE -g -O0 -fsanitize=address -Wall -Wextra)
+target_link_options(bench_asan PRIVATE -fsanitize=address)
