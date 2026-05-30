@@ -23,7 +23,16 @@ private:
 private:
     std::map<double, PriceLevel, std::greater<double>> m_bids;
     std::map<double, PriceLevel> m_asks;
-    std::unordered_map<uint64_t, std::pair<Side, double>> m_order_price_index;
+
+private:
+
+    struct OrderIndex {
+        Side side;
+        double price;
+        std::list<Order>::iterator it;
+    };
+
+    std::unordered_map<uint64_t, OrderIndex> m_order_price_index;
 };
 
 inline void OrderBook::add(const Order& order) {
@@ -31,7 +40,7 @@ inline void OrderBook::add(const Order& order) {
     pl.price = order.price;
     pl.total_quantity += order.quantity;
     pl.orders.push_back(order);
-    m_order_price_index[order.id] = { order.side, order.price};
+    m_order_price_index[order.id] = { order.side, order.price, std::prev(pl.orders.end())};
 }
 
 inline void OrderBook::cancel(uint64_t order_id) {
@@ -39,17 +48,13 @@ inline void OrderBook::cancel(uint64_t order_id) {
     if (it == m_order_price_index.end())
         return;
 
-    uint64_t id = it->first;
-    auto [side, price] = it->second;
+    auto [side, price, order_it] = it->second;
     PriceLevel& pl = side == Side::Buy ? m_bids[price] : m_asks[price];
 
-    for (std::deque<Order>::iterator it = pl.orders.begin(); it != pl.orders.end(); ++it) {
-        if (it->id == id) {
-            pl.total_quantity -= it->quantity;
-            pl.orders.erase(it);
-            break;
-        }
-    }
+    pl.total_quantity -= order_it->quantity;
+    pl.orders.erase(order_it);
+    if (pl.orders.empty())
+        side == Side::Buy ? m_bids.erase(price) : m_asks.erase(price);
 
     m_order_price_index.erase(it);
 }

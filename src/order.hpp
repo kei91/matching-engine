@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <deque>
+#include <list>
 
 enum class Side {
 	Buy,
@@ -19,7 +19,7 @@ struct Order {
 struct PriceLevel {
     double   price;
     uint64_t total_quantity;
-    std::deque<Order> orders;
+    std::list<Order> orders;
 };
 
 struct Trade {
