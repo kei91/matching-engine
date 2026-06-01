@@ -38,3 +38,23 @@ this degraded to O(n). Identified through benchmarks: `BM_MixedWorkload` showed 
 | Match         | 111 ns    | 149 ns |
 
 **Tradeoff:** `std::list` has worse cache locality during iteration - Add and Match became slower by ~35%.
+
+### 🔄 std::map → PriceLevelArray + std::pmr
+
+#### Changes:
+Replaced `std::map<double, PriceLevel>` with a flat array indexed by price ticks.
+Added `std::pmr::unsynchronized_pool_resource` for `std::list` node allocation.
+
+**Results:**
+| Benchmark     | Before | After  |
+|---------------|--------|--------|
+| Cancel        | 62 ns  | 69 ns  |
+| MixedWorkload | 84 ns  | 91 ns  |
+| Add           | 99 ns  | 90 ns  |
+| Match         | 149 ns | 148 ns |
+
+
+**Conclusion:**
+No significant improvement over the original `std::map` baseline. `Add` improved slightly probably due to pool allocation, but `Cancel`/`MixedWorkload` regressed - maybe because `unsynchronized_pool_resource` deallocate overhead outweighs the benefit at this order book depth (20 levels, few orders per level).
+
+Current benchmarks may not reflect realistic load. Next step: parameterize benchmarks by order book depth and orders per level to find the threshold where these optimizations pay off.
