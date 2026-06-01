@@ -5,7 +5,9 @@
 #include <cmath>
 #include <stdexcept>
 
-// covers price range from 98.00 to 100.99
+#include <memory_resource>
+
+// covers price range from 99.00 to 101.56
 static constexpr int32_t BASE_TICK = 9900;
 static constexpr int32_t CAPACITY  = 256;
 
@@ -22,15 +24,18 @@ inline double tick_to_price(int32_t tick) noexcept {
 
 class PriceLevelArray {
 public:
-    PriceLevelArray(bool best_is_high) : m_best_is_high (best_is_high) { 
+    PriceLevelArray(std::pmr::memory_resource* mem, bool best_is_high) 
+        : m_mem(mem) 
+        , m_best_is_high (best_is_high)
+    { 
         reset();
     }
- 
+
     void reset() {
         for (auto& pl : m_levels) {
+            pl.orders = std::pmr::list<Order>{m_mem};
             pl.price = 0.0;
             pl.total_quantity = 0;
-            pl.orders.clear();
         }
         m_best_id = -1;
         m_size = 0;
@@ -105,8 +110,12 @@ private:
         return -1;
     }
 
+private:
+    std::pmr::memory_resource* m_mem;
+
     bool m_best_is_high;
     int32_t m_best_id;
     int32_t m_size;
+    
     std::array<PriceLevel, CAPACITY> m_levels;
 };

@@ -8,6 +8,24 @@
 
 class OrderBook {
 public:
+    OrderBook()
+        : m_pool{}
+        , m_bids{&m_pool, true}
+        , m_asks{&m_pool, false}
+    {}
+
+    OrderBook(const OrderBook&) = delete;
+    OrderBook& operator=(const OrderBook&) = delete;
+    OrderBook(OrderBook&&) = delete;
+    OrderBook& operator=(OrderBook&&) = delete;
+
+    void reset() {
+        m_bids.reset();
+        m_asks.reset();
+        m_order_price_index.clear();
+        // keep m_pool - memory will be reused 
+    }
+
     void add(const Order& order);
     void cancel(uint64_t order_id);
 
@@ -17,12 +35,9 @@ public:
     std::vector<Trade> match(Order& incoming_order);
 
 private:
-    template<typename mapType, typename matchCheck>
-    std::vector<Trade> matchBook(Order& incoming_order, mapType& book, matchCheck canMatch);
-
-private:
-    PriceLevelArray m_bids{true};
-    PriceLevelArray m_asks{false};
+    std::pmr::unsynchronized_pool_resource m_pool;
+    PriceLevelArray m_bids;
+    PriceLevelArray m_asks;
 
 private:
 

@@ -19,7 +19,7 @@ struct Order {
 struct PriceLevel {
     double   price;
     uint64_t total_quantity;
-    std::list<Order> orders;
+    std::pmr::list<Order> orders;
 };
 
 struct Trade {

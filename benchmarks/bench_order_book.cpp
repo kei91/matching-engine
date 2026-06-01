@@ -46,7 +46,7 @@ static void BM_AddOrder(benchmark::State& state) {
     for (auto _ : state) {
         if (i > 0 && i % incoming.size() == 0) { // reset book to manage increasing size
             state.PauseTiming();
-            book = OrderBook{};
+            book.reset();
             ids.clear();
             SetupBook(book, ids);
             state.ResumeTiming();
@@ -64,7 +64,7 @@ static void BM_CancelOrders(benchmark::State& state) {
     for (auto _ : state) {
         if (ids.empty()) {
             state.PauseTiming();
-            book = OrderBook{};
+            book.reset();
             ids.clear();
             SetupBook(book, ids);
             state.ResumeTiming();
@@ -83,7 +83,7 @@ static void BM_MatchOrders(benchmark::State& state) {
         // Reset book if it's empty
         if (book.best_bid() == 0.0 || book.best_ask() == 0.0) {
             state.PauseTiming();
-            book = OrderBook{};
+            book.reset();
             ids.clear();
             SetupBook(book, ids);
             state.ResumeTiming();
@@ -125,7 +125,7 @@ static void BM_MixedWorkload(benchmark::State& state) {
         // Reset book if it's almost empty
         if (ids.size() < 10) {
             state.PauseTiming();
-            book = OrderBook{};
+            book.reset();
             ids.clear();
             SetupBook(book, ids);
             state.ResumeTiming();
