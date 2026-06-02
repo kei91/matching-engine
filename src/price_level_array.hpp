@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include <memory_resource>
+#include <string>
 
 // covers price range from 99.00 to 101.56
 static constexpr int32_t BASE_TICK = 9900;
@@ -90,8 +91,10 @@ public:
 private:
     int32_t tick_index(int32_t tick) const {
         int32_t id = tick - BASE_TICK;
-        if (id < 0 || id >= CAPACITY)
-            throw std::out_of_range("price out of PriceLevelArray range");
+        if (id < 0 || id >= CAPACITY) {
+            std::string str = "price out of PriceLevelArray range: " + std::to_string(id);
+            throw std::out_of_range(str);
+        }    
         return id;
     }
  
