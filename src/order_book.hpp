@@ -108,10 +108,15 @@ inline std::vector<Trade> OrderBook::match(Order& incoming_order) {
         });
 
         if (order.quantity == 0) {
-            m_order_price_index.erase(order.id);
-            pl->orders.pop_front();
-            if (pl->orders.empty())
-                book.advance_best();
+            pl.orders.pop_front();
+            if (pl.orders.empty()) {
+                book.erase(book.begin());
+
+                auto it = m_order_price_index.find(order.id);
+                if (it != m_order_price_index.end()) {
+                    m_order_price_index.erase(it);
+                }
+            }
         }
     }
 

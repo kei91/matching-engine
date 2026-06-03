@@ -58,3 +58,33 @@ Added `std::pmr::unsynchronized_pool_resource` for `std::list` node allocation.
 No significant improvement over the original `std::map` baseline. `Add` improved slightly probably due to pool allocation, but `Cancel`/`MixedWorkload` regressed - maybe because `unsynchronized_pool_resource` deallocate overhead outweighs the benefit at this order book depth (20 levels, few orders per level).
 
 Current benchmarks may not reflect realistic load. Next step: parameterize benchmarks by order book depth and orders per level to find the threshold where these optimizations pay off.
+
+### ↩️ Back to std::map + std::list
+
+#### Changes:
+Added benchmarks' arguments `levels` and `orders_per_level`, that way:
+- the book is kept at a fixed depth during measurement instead of growing from empty.
+- restore happens on a fixed cadence, so it doesn't depend on the workload size.
+
+**Results:**
+| Benchmark | std::map + std::list | PriceLevelArray + pmr |
+|-----------|---------------------|-----------------------|
+| Add       | 51 ns               | 61 ns                 |
+| Cancel    | 65 ns               | 57 ns                 |
+| Match     | 52 ns               | 80 ns                 |
+| Mixed     | 90 ns               | 70 ns                 |
+**the median of 8 runs at depth 50 levels / 20 orders*
+
+**Conclusion:**
+It's a tie - each version wins two of the four:
+- `std::map` is faster on `Match` (best level is just `begin()`, no scanning) and slightly faster on `Add`.
+- `PriceLevelArray + pmr` is faster on `Cancel` and `Mixed`.
+
+The flat array's main selling point - O(1) instead of O(log n) - doesn't help here, because the price range caps the map at ~256 levels, so `O(log n)` is only ~7 cheap comparisons on hot cache.
+
+> ⚠️ The first single-run numbers showed the array winning by ~2x everywhere. That was just noise (the machine was under load) - the median of 8 runs tells a completely different story. Always run with `--benchmark_repetitions`.
+
+Since performance is a tie, going back to `std::map + std::list`:
+- simpler code, stdlib only, no fixed-size array and no custom allocator;
+- even faster on the latency-critical `Match` path;
+- `pmr::unsynchronized_pool_resource` is not thread-safe, which would get in the way of the upcoming multithreading experiments.

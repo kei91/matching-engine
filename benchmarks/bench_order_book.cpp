@@ -82,7 +82,7 @@ static void BM_CancelOrders(benchmark::State& state) {
     for (auto _ : state) {
         if (done == REFILL_BATCH || ids.empty()) {
             state.PauseTiming();
-            book.reset();
+            book = OrderBook();
             ids.clear();
             SetupBook(book, ids, levels, orders_per_level);
             done = 0;
@@ -106,7 +106,7 @@ static void BM_MatchOrders(benchmark::State& state) {
     for (auto _ : state) {
         if (done == REFILL_BATCH || book.best_ask() == 0.0) {
             state.PauseTiming();
-            book.reset();
+            book = OrderBook();
             ids.clear();
             SetupBook(book, ids, levels, orders_per_level);
             done = 0;
@@ -135,7 +135,7 @@ static void BM_MixedWorkload(benchmark::State& state) {
     for (auto _ : state) {
         if (ids.size() > target + REFILL_BATCH || ids.size() < 10) {
             state.PauseTiming();
-            book.reset();
+            book = OrderBook();
             ids.clear();
             SetupBook(book, ids, levels, orders_per_level);
             i = 0;
