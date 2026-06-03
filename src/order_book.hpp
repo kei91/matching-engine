@@ -1,31 +1,13 @@
 #pragma once
 
 #include "order.hpp"
-#include "price_level_array.hpp"
 
+#include <map>
 #include <unordered_map>
 #include <vector>
 
 class OrderBook {
 public:
-    OrderBook()
-        : m_pool{}
-        , m_bids{&m_pool, true}
-        , m_asks{&m_pool, false}
-    {}
-
-    OrderBook(const OrderBook&) = delete;
-    OrderBook& operator=(const OrderBook&) = delete;
-    OrderBook(OrderBook&&) = delete;
-    OrderBook& operator=(OrderBook&&) = delete;
-
-    void reset() {
-        m_bids.reset();
-        m_asks.reset();
-        m_order_price_index.clear();
-        // keep m_pool - memory will be reused 
-    }
-
     void add(const Order& order);
     void cancel(uint64_t order_id);
 
@@ -35,9 +17,12 @@ public:
     std::vector<Trade> match(Order& incoming_order);
 
 private:
-    std::pmr::unsynchronized_pool_resource m_pool;
-    PriceLevelArray m_bids;
-    PriceLevelArray m_asks;
+    template<typename mapType, typename matchCheck>
+    std::vector<Trade> matchBook(Order& incoming_order, mapType& book, matchCheck canMatch);
+
+private:
+    std::map<double, PriceLevel, std::greater<double>> m_bids;
+    std::map<double, PriceLevel> m_asks;
 
 private:
 
@@ -51,11 +36,11 @@ private:
 };
 
 inline void OrderBook::add(const Order& order) {
-    PriceLevelArray& arr = (order.side == Side::Buy) ? m_bids : m_asks;
-
-    auto it = arr.add_order(order);
-    arr.update_best(order.price);
-    m_order_price_index[order.id] = { order.side, order.price, it };
+    PriceLevel& pl = (order.side == Side::Buy) ? m_bids[order.price] : m_asks[order.price];
+    pl.price = order.price;
+    pl.total_quantity += order.quantity;
+    pl.orders.push_back(order);
+    m_order_price_index[order.id] = { order.side, order.price, std::prev(pl.orders.end())};
 }
 
 inline void OrderBook::cancel(uint64_t order_id) {
@@ -63,47 +48,51 @@ inline void OrderBook::cancel(uint64_t order_id) {
     if (it == m_order_price_index.end())
         return;
 
-    auto& [side, price, order_it] = it->second;
-    PriceLevelArray& arr = (side == Side::Buy) ? m_bids : m_asks;
-    arr.erase_order(price, order_it, order_it->quantity);
+    auto [side, price, order_it] = it->second;
+    PriceLevel& pl = side == Side::Buy ? m_bids[price] : m_asks[price];
+
+    pl.total_quantity -= order_it->quantity;
+    pl.orders.erase(order_it);
+    if (pl.orders.empty())
+        side == Side::Buy ? m_bids.erase(price) : m_asks.erase(price);
+
     m_order_price_index.erase(it);
 }
 
 inline double OrderBook::best_bid() const {
-    return m_bids.best_price();
+    return m_bids.empty() ? 0.0 : m_bids.begin()->first;
 }
 
 inline double OrderBook::best_ask() const {
-    return m_asks.best_price();
+    return m_asks.empty() ? 0.0 : m_asks.begin()->first;
 }
 
 inline std::vector<Trade> OrderBook::match(Order& incoming_order) {
+    return incoming_order.side == Side::Buy 
+            ? matchBook(incoming_order, m_asks, [](double p, double bp) { return p >= bp;}) 
+            : matchBook(incoming_order, m_bids, [](double p, double bp) { return p <= bp;});
+}
+
+template<typename mapType, typename matchCheck>
+std::vector<Trade> OrderBook::matchBook(Order& incoming_order, mapType& book, matchCheck canMatch) {
     std::vector<Trade> trades;
-    bool is_bid = incoming_order.side == Side::Buy;
-    PriceLevelArray& book = is_bid ? m_asks : m_bids;
 
-    while (incoming_order.quantity > 0 && !book.empty()) {
-        PriceLevel* pl = book.best_level();
-        if (!pl || pl->orders.empty())
+    while (incoming_order.quantity > 0 &&  !book.empty()) {
+        auto& [bp, pl] = *book.begin();
+        if (!canMatch(incoming_order.price, bp))
             break;
 
-        double level_price = pl->price;
-        if (is_bid && incoming_order.price < level_price)
-            break;
-        if (!is_bid && incoming_order.price > level_price)
-            break;
+        Order& order = pl.orders.front();
 
-        Order& order = pl->orders.front();
         uint64_t quantity = std::min(incoming_order.quantity, order.quantity);
-
         incoming_order.quantity -= quantity;
-        order.quantity          -= quantity;
-        pl->total_quantity      -= quantity;
+        order.quantity -= quantity;
+        pl.total_quantity -= quantity;
 
         trades.push_back({
-            is_bid ? incoming_order.id : order.id,
-            is_bid ? order.id  : incoming_order.id,
-            level_price,
+            incoming_order.side == Side::Buy ? incoming_order.id : order.id,
+            incoming_order.side == Side::Buy ? order.id : incoming_order.id,
+            bp,
             quantity
         });
 
