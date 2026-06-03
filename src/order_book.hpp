@@ -100,6 +100,11 @@ std::vector<Trade> OrderBook::matchBook(Order& incoming_order, mapType& book, ma
             pl.orders.pop_front();
             if (pl.orders.empty()) {
                 book.erase(book.begin());
+
+                auto it = m_order_price_index.find(order.id);
+                if (it != m_order_price_index.end()) {
+                    m_order_price_index.erase(it);
+                }
             }
         }
     }
