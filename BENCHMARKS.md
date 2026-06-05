@@ -82,7 +82,7 @@ It's a tie - each version wins two of the four:
 
 The flat array's main selling point - O(1) instead of O(log n) - doesn't help here, because the price range caps the map at ~256 levels, so `O(log n)` is only ~7 cheap comparisons on hot cache.
 
-> ⚠️ The first single-run numbers showed the array winning by ~2x everywhere. That was just noise (the machine was under load) - the median of 8 runs tells a completely different story. Always run with `--benchmark_repetitions`.
+> ⚠️ The first single-run numbers showed the array winning by ~2x everywhere. That run was done on battery - the CPU was capped at ~2.4 GHz instead of 4.0 GHz (no turbo), which scaled the map+list numbers up by ~1.6x. Run `utils/bench_preflight.sh` first (checks AC power, turbo, governor, frequency) and always use `--benchmark_repetitions`.
 
 Since performance is a tie, going back to `std::map + std::list`:
 - simpler code, stdlib only, no fixed-size array and no custom allocator;
