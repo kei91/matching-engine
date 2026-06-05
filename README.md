@@ -1,39 +1,42 @@
 # matching-engine
 C++ matching engine for exploring lock-free data structures, cache optimization, and multithreading patterns
 
-## Build
-
-### Requirements: 
+## Requirements
 - GCC 11+, CMake 3.28+
 - Google Benchmark v1.9.5 (fetched automatically via FetchContent)
 
-### Build all:
+## Build & Run
+
+`utils/dev.sh` builds and runs everything. 
+
+### Tests:
+```bash
+./utils/dev.sh test
+```
+
+### Benchmarks:
+```bash
+./utils/dev.sh bench
+```
+Sets the `performance` governor, checks the machine is in a stable state
+(`utils/bench_preflight.sh`: on AC power, turbo on, not throttled - otherwise it aborts),
+pins to one core, and defaults to the median of 8 runs. Extra args are passed through, e.g.:
+```bash
+./utils/dev.sh bench --benchmark_filter=BM_MatchOrders
+```
+
+### Build Asan:
+```bash
+./utils/dev.sh asan
+```
+
+### Manual build
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-```
-
-### Build asan:
-```bash
+# asan:
 cmake -B build_asan -DCMAKE_BUILD_TYPE=Debug
 cmake --build build_asan --target bench_asan
-```
-
-## Run
-
-### Run tests:
-```bash
-cd build && ctest
-```
-### Run benchmarks:
-```bash
-sudo cpupower frequency-set -g performance
-taskset -c 0 ./build/bench
-```
-### Run asan benchmarks:
-```bash
-sudo cpupower frequency-set -g performance
-taskset -c 0 ./build_asan/bench_asan
 ```
 
 ## Performance
