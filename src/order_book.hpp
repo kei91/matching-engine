@@ -97,11 +97,12 @@ std::vector<Trade> OrderBook::matchBook(Order& incoming_order, mapType& book, ma
         });
 
         if (order.quantity == 0) {
+            uint64_t filled_id = order.id;
             pl.orders.pop_front();
             if (pl.orders.empty()) {
                 book.erase(book.begin());
 
-                auto it = m_order_price_index.find(order.id);
+                auto it = m_order_price_index.find(filled_id);
                 if (it != m_order_price_index.end()) {
                     m_order_price_index.erase(it);
                 }
