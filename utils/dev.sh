@@ -44,7 +44,8 @@ case "$cmd" in
     asan)
         # asan is for catching memory/UB bugs, not timing - no preflight/governor/taskset
         cmake -B build_asan -DCMAKE_BUILD_TYPE=Debug
-        cmake --build build_asan --target bench_asan
+        cmake --build build_asan --target bench_asan tests_asan
+        ./build_asan/tests_asan "$@"
         ./build_asan/bench_asan "$@"
         ;;
 
