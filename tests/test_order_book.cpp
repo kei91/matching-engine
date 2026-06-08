@@ -91,6 +91,18 @@ TEST(OrderBookTest, PriceTimePriority) {
     EXPECT_EQ(trades[0].ask_id, 1); 
 }
 
+TEST(OrderBookTest, IndexCleanedOnPartialLevelFill) {
+    OrderBook book;
+    book.add({1, Side::Sell, 100.0, 100, 0});
+    book.add({2, Side::Sell, 100.0, 100, 1});
+
+    Order buy{3, Side::Buy, 100.0, 100, 2};
+    book.match(buy); 
+
+    book.cancel(1);
+    EXPECT_EQ(book.best_ask(), 100.0);
+}
+
 TEST (SPSCQueueTest, QueueOrder) {
     SPSCQueue<int, 8> q;
     for (int i = 0; i < 5; ++i)
