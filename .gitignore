@@ -1,5 +1,6 @@
 # .gitignore
 build/
 build_asan/
+build_tsan/
 .cache/
 
