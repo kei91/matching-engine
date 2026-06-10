@@ -3,6 +3,7 @@
 #   ./utils/dev.sh test      build (Release) and run unit tests
 #   ./utils/dev.sh bench     build, stabilize the machine, run benchmarks (perf)
 #   ./utils/dev.sh asan      build the asan target and run it (memory / UB checks)
+#   ./utils/dev.sh tsan      build the concurrent SPSC test under ThreadSanitizer (data races)
 #
 # Extra args after the command go to the underlying tool, e.g.:
 #   ./utils/dev.sh bench --benchmark_filter=BM_MatchOrders
@@ -41,6 +42,24 @@ case "$cmd" in
         taskset -c 0 ./build/bench "$@"
         ;;
 
+    bench-spsc)
+        cmake -B build -DCMAKE_BUILD_TYPE=Release
+        cmake --build build --target bench_spsc
+
+        sudo cpupower frequency-set -g performance || echo "WARN: couldn't set governor"
+        if ! ./utils/bench_preflight.sh; then
+            echo "Environment not stable for benchmarking. Aborting."
+            exit 1
+        fi
+
+        if [ "$#" -eq 0 ]; then
+            set -- --benchmark_repetitions=8 --benchmark_report_aggregates_only=true
+        fi
+        # -c 0,2 keeps producer and consumer on SEPARATE physical cores
+        # (NOT 0,1 - those are usually hyperthread siblings sharing L1/L2).
+        taskset -c 0,2 ./build/bench_spsc "$@"
+        ;;    
+
     asan)
         # asan is for catching memory/UB bugs, not timing - no preflight/governor/taskset
         cmake -B build_asan -DCMAKE_BUILD_TYPE=Debug
@@ -49,8 +68,16 @@ case "$cmd" in
         ./build_asan/bench_asan "$@"
         ;;
 
+    tsan)
+        cmake -B build_tsan -DCMAKE_BUILD_TYPE=Debug
+        cmake --build build_tsan --target tests_tsan
+        # setarch -R disables ASLR (Address Space Layout Randomization): 
+        # TSan aborts with "unexpected memory mapping" on recent kernels.
+        setarch -R ./build_tsan/tests_tsan "$@"
+        ;;
+
     *)
-        echo "usage: $0 {test|bench|asan} [extra args...]"
+        echo "usage: $0 {test|bench|asan|tsan} [extra args...]"
         exit 2
         ;;
 esac
