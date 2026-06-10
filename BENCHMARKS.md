@@ -88,3 +88,28 @@ Since performance is a tie, going back to `std::map + std::list`:
 - simpler code, stdlib only, no fixed-size array and no custom allocator;
 - even faster on the latency-critical `Match` path;
 - `pmr::unsynchronized_pool_resource` is not thread-safe, which would get in the way of the upcoming multithreading experiments.
+
+## Multithreading
+
+### ✅ SPSC queue: `alignas(64)` on head/tail (false sharing)
+
+#### Problem:
+The lock-free `SPSCQueue` (`src/spsc_queue.hpp`) uses two atomic indices: `read` (written only by the consumer) and `write` (written only by the producer). False sharing is happening if both sit in the same 64-byte cache line.
+
+#### Solution:
+`alignas(64)` on each of `read` and `write`, so they land on separate cache lines.
+
+**Results** (`bench_spsc`, producer/consumer pinned to separate physical cores via `taskset -c 0,2`, median of 8 reps):
+| Metric        | with `alignas(64)` | without (same line) |
+|---------------|--------------------|---------------------|
+| Time/op       | 10.1 ns            | 17.3 ns             |
+| Throughput    | 99 M items/s       | 58 M items/s        |
+| cv            | 8.0 %              | 7.5 %               |
+
+**Conclusion:**
+Splitting the two indices onto separate cache lines gives **~40% more throughput** (58 → 99 M items/s). The win only appears with the two threads on *different* cores — on a single core (or hyperthread siblings) there is no inter-core line transfer to eliminate. Measured with `taskset -c 0,2` to keep producer and consumer on distinct physical cores.
+
+### Correctness: ThreadSanitizer
+
+The single-threaded gtest cases (`QueueOrder`, `WrapAround`, ...) verify ring-buffer logic, `tests/test_spsc_concurrent.cpp` runs a producer thread against a consumer thread (1M items, strict FIFO check) under TSan (`dev.sh tsan`).
+
