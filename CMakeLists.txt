@@ -25,8 +25,14 @@ target_include_directories(matching_engine_tests PRIVATE src)
 target_link_libraries(matching_engine_tests GTest::gtest_main)
 target_compile_options(matching_engine_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
+add_executable(rdtsc_tests tests/test_rdtsc.cpp)
+target_include_directories(rdtsc_tests PRIVATE src)
+target_link_libraries(rdtsc_tests GTest::gtest_main)
+target_compile_options(rdtsc_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
 include(GoogleTest)
 gtest_discover_tests(matching_engine_tests)
+gtest_discover_tests(rdtsc_tests)
 
 FetchContent_Declare(
     googlebenchmark
