@@ -50,6 +50,7 @@ endfunction()
 # --- unit tests --------------------------------------------------------------
 add_unit_test(matching_engine_tests tests/test_order_book.cpp)
 add_unit_test(rdtsc_tests           tests/test_rdtsc.cpp)
+add_unit_test(latency_histogram_tests tests/test_latency_histogram.cpp)
 
 # --- benchmarks --------------------------------------------------------------
 add_bench(bench      benchmarks/bench_order_book.cpp)
