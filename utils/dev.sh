@@ -2,6 +2,7 @@
 # Dev helper. Usage:
 #   ./utils/dev.sh test      build (Release) and run unit tests
 #   ./utils/dev.sh bench     build, stabilize the machine, run benchmarks (perf)
+#   ./utils/dev.sh bench-latency  build, stabilize, run the rdtsc latency bench (p50/p99/p99.9)
 #   ./utils/dev.sh asan      build the asan target and run it (memory / UB checks)
 #   ./utils/dev.sh tsan      build the concurrent SPSC test under ThreadSanitizer (data races)
 #
@@ -60,6 +61,20 @@ case "$cmd" in
         taskset -c 0,2 ./build/bench_spsc "$@"
         ;;    
 
+    bench-latency)
+        cmake -B build -DCMAKE_BUILD_TYPE=Release
+        cmake --build build --target bench_latency
+
+        sudo cpupower frequency-set -g performance || echo "WARN: couldn't set governor"
+        if ! ./utils/bench_preflight.sh; then
+            echo "Environment not stable for benchmarking. Aborting."
+            exit 1
+        fi
+
+        # pinned to one core; the bench prints its own p50/p99/p99.9 distribution
+        taskset -c 0 ./build/bench_latency "$@"
+        ;;
+
     asan)
         # asan is for catching memory/UB bugs, not timing - no preflight/governor/taskset
         cmake -B build_asan -DCMAKE_BUILD_TYPE=Debug
@@ -77,7 +92,7 @@ case "$cmd" in
         ;;
 
     *)
-        echo "usage: $0 {test|bench|asan|tsan} [extra args...]"
+        echo "usage: $0 {test|bench|bench-spsc|bench-latency|asan|tsan} [extra args...]"
         exit 2
         ;;
 esac
