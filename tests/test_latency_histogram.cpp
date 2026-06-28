@@ -62,6 +62,7 @@ TEST(LatencyHistogram, Overflow) {
     EXPECT_EQ(h.count(), 2u);
     EXPECT_EQ(h.max(), 5000u);              // exact max preserved
     EXPECT_EQ(h.percentile(100.0), 1000u);  // overflow reported at the max_ns floor
+    EXPECT_EQ(h.overflow_count(), 1u);      // exactly one sample exceeded max_ns
 }
 
 // Coarser bucket width rounds the reported percentile up to the bucket edge.

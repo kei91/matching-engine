@@ -75,6 +75,12 @@ public:
     }
 
     uint64_t count() const { return m_count; }
+
+    // How many samples landed in the overflow bucket, i.e. were >= max_ns.
+    // Useful to quantify the tail: "N outliers out of count".
+    uint64_t overflow_count() const {
+        return m_buckets.empty() ? 0 : m_buckets.back();
+    }
     uint64_t min()   const { return m_count ? m_min : 0; }
     uint64_t max()   const { return m_count ? m_max : 0; }
     double   mean()  const {
