@@ -113,3 +113,35 @@ Splitting the two indices onto separate cache lines gives **~40% more throughput
 
 The single-threaded gtest cases (`QueueOrder`, `WrapAround`, ...) verify ring-buffer logic, `tests/test_spsc_concurrent.cpp` runs a producer thread against a consumer thread (1M items, strict FIFO check) under TSan (`dev.sh tsan`).
 
+## Latency
+
+### ✅ rdtsc + histogram latency
+
+#### Problem:
+Google Benchmark reports average time over a batch, which hides the tail. But for matching engine I need per-operation latency and its distribution, not an average.
+
+#### Solution:
+- `src/rdtsc.hpp` - cheap per-operation timer (`lfence; rdtsc; lfence`, ~14 ns overhead).
+- `src/latency_histogram.hpp` - linear fixed-width buckets, nearest-rank percentiles; exact `min`/`max`/`mean`/`overflow_count` tracked separately so bucket rounding doesn't affect them.
+- `benchmarks/bench_latency.cpp` - times each `OrderBook::add` individually (100k warmup + 2M measured), prints p50/p99/p99.9 + outlier count.
+- `dev.sh bench-latency` - runs it pinned (`taskset -c 0`) behind the same governor + preflight gate as the other benches.
+
+**Results** (`dev.sh bench-latency`, performance governor, 3938/4000 MHz, `OrderBook::add`, 2M ops):
+| Metric           | Value     |
+|------------------|-----------|
+| min              | 71 ns     |
+| p50              | 73 ns     |
+| p99              | 1402 ns   |
+| p99.9            | 3800 ns   |
+| max              | ~30 ms    |
+| mean             | 147 ns    |
+| outliers (>10µs) | 0.0094% (188 / 2M) |
+
+**Conclusion:**
+The **mean (147 ns) lies** - it sits at ~2× the median because the tail drags it up. The **median (73 ns)** is the typical `add`, and
+p99/p99.9 expose the jitter. p50/p99/p99.9 are reproducible across runs (~73 / ~1400 / ~3800); only `max` swings.
+
+The `max` of ~30 ms is **not** a measurement bug - it is OS/scheduler noise: `taskset`pins our thread *to* core 0 but doesn't evict others from it, so an interrupt or scheduler tick can stall a single `add`. Only ~0.01% of ops exceed 10 µs, all above p99.9 - so they don't move the percentiles we report. This is exactly why we read percentiles, not `max`.
+
+**Caveat:** this measures `add` while the book grows unbounded (fixed level count, but the `std::list` per level keeps growing), so the tail is partly the `std::list` node allocator, not just book logic. A steady-state version is future work.
+
