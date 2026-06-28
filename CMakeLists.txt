@@ -56,6 +56,11 @@ add_unit_test(latency_histogram_tests tests/test_latency_histogram.cpp)
 add_bench(bench      benchmarks/bench_order_book.cpp)
 add_bench(bench_spsc benchmarks/bench_spsc.cpp Threads::Threads)
 
+# Standalone latency benchmark (own loop + rdtsc + histogram, no benchmark lib).
+add_executable(bench_latency benchmarks/bench_latency.cpp)
+target_include_directories(bench_latency PRIVATE src)
+target_compile_options(bench_latency PRIVATE ${PROJECT_WARNINGS})
+
 # --- sanitizer targets -------------------------------------------------------
 add_executable(bench_asan benchmarks/bench_order_book.cpp)
 target_include_directories(bench_asan PRIVATE src)
