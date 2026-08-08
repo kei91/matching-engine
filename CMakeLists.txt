@@ -61,6 +61,12 @@ add_executable(bench_latency benchmarks/bench_latency.cpp)
 target_include_directories(bench_latency PRIVATE src)
 target_compile_options(bench_latency PRIVATE ${PROJECT_WARNINGS})
 
+# End-to-end pipeline latency (producer + matching thread); needs Threads.
+add_executable(bench_pipeline benchmarks/bench_pipeline.cpp)
+target_include_directories(bench_pipeline PRIVATE src)
+target_link_libraries(bench_pipeline Threads::Threads)
+target_compile_options(bench_pipeline PRIVATE ${PROJECT_WARNINGS})
+
 # --- sanitizer targets -------------------------------------------------------
 add_executable(bench_asan benchmarks/bench_order_book.cpp)
 target_include_directories(bench_asan PRIVATE src)

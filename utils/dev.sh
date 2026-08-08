@@ -3,6 +3,7 @@
 #   ./utils/dev.sh test      build (Release) and run unit tests
 #   ./utils/dev.sh bench     build, stabilize the machine, run benchmarks (perf)
 #   ./utils/dev.sh bench-latency  build, stabilize, run the rdtsc latency bench (p50/p99/p99.9)
+#   ./utils/dev.sh bench-pipeline build, stabilize, run the end-to-end push->matched latency bench
 #   ./utils/dev.sh asan      build the asan target and run it (memory / UB checks)
 #   ./utils/dev.sh tsan      build the concurrent SPSC test under ThreadSanitizer (data races)
 #
@@ -75,6 +76,21 @@ case "$cmd" in
         taskset -c 0 ./build/bench_latency "$@"
         ;;
 
+    bench-pipeline)
+        cmake -B build -DCMAKE_BUILD_TYPE=Release
+        cmake --build build --target bench_pipeline
+
+        sudo cpupower frequency-set -g performance || echo "WARN: couldn't set governor"
+        if ! ./utils/bench_preflight.sh; then
+            echo "Environment not stable for benchmarking. Aborting."
+            exit 1
+        fi
+
+        # -c 0,2 keeps producer and matching thread on SEPARATE physical cores
+        # (cross-core TSC subtraction relies on synchronized invariant TSC).
+        taskset -c 0,2 ./build/bench_pipeline "$@"
+        ;;
+
     asan)
         # asan is for catching memory/UB bugs, not timing - no preflight/governor/taskset
         cmake -B build_asan -DCMAKE_BUILD_TYPE=Debug
@@ -92,7 +108,7 @@ case "$cmd" in
         ;;
 
     *)
-        echo "usage: $0 {test|bench|bench-spsc|bench-latency|asan|tsan} [extra args...]"
+        echo "usage: $0 {test|bench|bench-spsc|bench-latency|bench-pipeline|asan|tsan} [extra args...]"
         exit 2
         ;;
 esac

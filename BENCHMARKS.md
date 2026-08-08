@@ -145,3 +145,52 @@ The `max` of ~30 ms is **not** a measurement bug - it is OS/scheduler noise: `ta
 
 **Caveat:** this measures `add` while the book grows unbounded (fixed level count, but the `std::list` per level keeps growing), so the tail is partly the `std::list` node allocator, not just book logic. A steady-state version is future work.
 
+
+### ✅ End-to-end pipeline latency vs offered load
+
+#### Problem:
+`bench_latency` times `OrderBook::add` in isolation, in one thread. That is the cost of one function, not the latency an order actually experiences once ingestion and matching are separate threads. The real path is `push` → *wait in queue* → `pop` → `match`, and the queue wait is the part that no single-threaded benchmark can show.
+
+The first attempt let the producer push as fast as it could. It reported p50/p99/p99.9 all pinned at 100 µs with 99.97% of samples in the overflow bucket — and **min was 94 µs too**, which is the tell: scheduler noise inflates the tail and leaves the minimum alone, so a shifted *whole* distribution means systematic error, not noise. A saturated queue makes end-to-end latency equal `queue_depth × service_time`, i.e. a property of the buffer. Measured: 85 ns of real match work reported as ~143 µs (1756× at depth 1024). Halving the queue would have "halved the latency" without the engine getting one cycle faster.
+
+#### Solution:
+- Rate-limit the producer (`spin_until` on the TSC, `_mm_pause` in the spin) and sweep the arrival rate as a fraction of capacity, instead of measuring one saturated point.
+- Measure capacity from the **whole consumer loop**, not from `match()` alone (see caveat below).
+- Print target vs achieved M orders/s per row, so a run where the pacer can't keep up is visible instead of silently masquerading as a load level.
+- Histogram ceiling raised to 10 ms (end-to-end spans ns..ms once the queue backs up; 100 µs clipped every percentile).
+- Alternating buy/sell at one price, so every order crosses and the book stays at ~1 order — this removes the unbounded `std::list` growth that was the caveat on the `add()` numbers above.
+
+**Results** (`dev.sh bench-pipeline`, `taskset -c 0,2` = two distinct physical cores, 3899/4000 MHz, 1M measured orders per level, **median of 5 reps**; consumer service time 121 ns/order → capacity ~8.3 M orders/s):
+
+| load | target M/s | achieved M/s | p50 | p99 | p99.9 | mean |
+|------|-----------|--------------|-----|-----|-------|------|
+| 10%  | 0.83 | 0.83 | **214** | 1 485 | 23 322 | 397 |
+| 30%  | 2.48 | 2.48 | **215** | 130 660 | 243 008 | 4 187 |
+| 50%  | 4.13 | 4.14 | **216** ‡ | 228 075 | 374 528 | 32 988 |
+| 70%  | 5.79 | 5.72 | 120 508 | 255 938 | 375 423 | 90 652 |
+| 85%  | 7.03 | 6.36 ⚠️ | 123 180 | 272 254 | 424 090 | 131 593 |
+| 95%  | 7.85 | 6.31 ⚠️ | 126 538 | 246 625 | 319 476 | 131 597 |
+
+⚠️ = producer could not sustain the target rate; the system is past saturation and the latency shown is again buffer depth, not engine speed.
+
+Run-to-run spread (max/min over the 5 reps) — the numbers we quote and the ones we don't:
+
+| load | p50 | p99 | p99.9 | mean |
+|------|-----|-----|-------|------|
+| 10%  | 1.03× | 2.05× | 6.35× | 1.78× |
+| 30%  | 1.04× | 1.76× | 1.66× | 2.13× |
+| 50%  | **59.97×** ‡ | 2.80× | 2.18× | 4.01× |
+| 70%  | 1.13× | 1.86× | 1.69× | 2.10× |
+| 85%  | 1.08× | 1.71× | 1.48× | 1.16× |
+| 95%  | 1.09× | 1.92× | 1.56× | 1.17× |
+
+‡ **The knee is not a point, it is a bistable zone.** p50 is rock-steady everywhere (1.03–1.13×) *except* at 50% load, where it swings 60× between reps: some runs stay in the free-flow regime (~216 ns), others tip over into the queued regime (~130 µs). The median says 216 ns, i.e. it lands free-flow more often than not — but a single run at this load is a coin flip, and quoting one would be quoting noise. Any load level near the knee needs repetitions to mean anything.
+
+**Conclusion:**
+The engine's true end-to-end latency is **~215 ns p50** (91 ns of matching + queue transfer + instrumentation), flat and highly reproducible (1.03–1.04× across reps) up to ~30% utilisation. The **knee sits at ~50%**, and past it p50 jumps ~560× (216 ns → 120 µs). Saturation sets in near **6.3 M orders/s**, below the 8.3 M/s capacity measured on a hot loop — with a sparse arrival stream the consumer keeps hitting an empty queue, and the spin-exit costs more than the steady-state loop.
+
+The tail degrades **long before the median does**: at 30% load p50 is still a clean 215 ns while p99 is already 131 µs. A median-only view would call this system healthy at nearly twice the load where its tail has actually fallen apart — the same argument for percentiles as in the `add()` section, but sharper, because here the median is not merely optimistic, it is *flat* while p99 moves three orders of magnitude.
+
+**Caveat — reproducibility is per-metric, not per-benchmark.** p50 away from the knee is worth quoting to three digits; p99.9 at low load moves 6.35× between identical runs and is worth quoting only as an order of magnitude. The cores are not isolated (`isolcpus` is not set), so at 0.83 M orders/s the tail is mostly other things on core 0, not the engine. Repetition doesn't fix that — it just makes it visible.
+
+**Caveat — the observer effect is 18% of capacity.** Capacity has to be measured at the slowest stage *including instrumentation*: `match()` ~91 ns + `pop()` ~36 ns (acquire load + release store = inter-core cache-line transfer) + 2× `rdtsc::now()` ~27 ns ≈ 154 ns when each part is timed separately; timing the loop as a whole gives 121 ns, the difference being the extra `rdtsc` pairs the piecewise measurement itself adds. Timing `match()` alone gives 91 ns and overstates capacity by ~70%; the first corrected run used that number, so every level above ~60% silently requested a rate the consumer could never serve, and all of them returned the identical "queue is full" latency (~131 µs flat from 50% to 95%). The flat plateau, not the absolute values, was the clue.
