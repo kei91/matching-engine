@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <thread>
+#include <vector>
 #include <x86intrin.h> // _mm_pause in the spin loop
 
 namespace {
@@ -181,6 +182,8 @@ LatencyHistogram run_at_load(double tpns, double load, double service_ns) {
                 static_cast<unsigned long>(hist.percentile(99.9)),
                 static_cast<unsigned long>(hist.max()),
                 hist.mean());
+
+    return hist;
 }
 
 } // namespace
@@ -197,8 +200,17 @@ int main() {
     std::printf("load | target|  got  |    p50 |     p99 |   p99.9 |      max |      mean\n");
     std::printf("-----+-------+-------+--------+---------+---------+----------+----------\n");
 
+    std::vector<LatencyHistogram> hists;
     for (double load : LOADS)
-        run_at_load(tpns, load, service_ns);
+        hists.push_back(run_at_load(tpns, load, service_ns));
+
+    std::printf("\n");
+    for (std::size_t i = 0; i < hists.size(); ++i) {
+        char title[64];
+        std::snprintf(title, sizeof title, "load %.0f%%", LOADS[i] * 100.0);
+        hists[i].print(title);
+        std::printf("\n");
+    }
 
     return 0;
 }

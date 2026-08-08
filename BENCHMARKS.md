@@ -193,4 +193,42 @@ The tail degrades **long before the median does**: at 30% load p50 is still a cl
 
 **Caveat — reproducibility is per-metric, not per-benchmark.** p50 away from the knee is worth quoting to three digits; p99.9 at low load moves 6.35× between identical runs and is worth quoting only as an order of magnitude. The cores are not isolated (`isolcpus` is not set), so at 0.83 M orders/s the tail is mostly other things on core 0, not the engine. Repetition doesn't fix that — it just makes it visible.
 
+### ✅ Seeing the shape: `LatencyHistogram::print()`
+
+#### Problem:
+p50/p99/p99.9 are three points on a curve. They cannot distinguish one hump from two — and at the knee the distribution is **bimodal**, which is precisely the interesting part. The 60× p50 swing above was inferred indirectly, by running the bench five times and noticing the median landed in one of two places. That is a lot of work to discover something a picture shows at a glance.
+
+#### Solution:
+`LatencyHistogram::print()` — an ASCII bar chart of the distribution. Recording buckets stay linear (1 ns) for exact percentiles; the *rows* are logarithmic (5 per decade), which is the only way ~200 ns and ~500 µs fit on one screen. Runs of empty rows collapse to `... N empty rows ...`, the leading empty decades are suppressed, and any non-empty row renders at least one `#` so a thin tail stays visible instead of rounding to blank.
+
+**Results** (same run, three load levels either side of the knee):
+
+```
+load 10%  - one hump, healthy
+     158ns |################################################|  75.461%
+     251ns |###########                                     |  18.392%
+     398ns |#                                               |   2.649%
+     ...tail decaying smoothly to 251us, all under 1% per row...
+
+load 50%  - TWO humps: same run, two regimes at once
+     158ns |################################################|  42.240%   <- free flow
+     251ns |##                                              |   2.501%
+     ...thin bridge, ~0.3-1% per row across three decades...
+   100.0us |##########################################      |  37.755%   <- queued
+   158.5us |########                                        |   7.905%
+
+load 70%  - one hump again, but now the slow one
+     158ns |#                                               |   0.458%   <- almost nothing left
+     ...
+   100.0us |################################################|  81.336%
+   158.5us |########                                        |  13.704%
+```
+
+**Conclusion:**
+The load sweep is not a curve that bends — it is a **migration between two regimes**. At 10% essentially every order flows straight through (~160 ns). At 50% the population splits: 42% still flow through while 38% sit at ~100 µs, three orders of magnitude apart, *in the same run*. By 70% the fast mode has all but vanished (0.46%) and the queued mode holds 81%.
+
+This is what the p50 instability at 50% actually was: with the population split roughly in half, which side the median falls on is decided by a few percent of drift between runs. The percentile table reported `p50 = 228 ns` for that row — a number that describes 42% of the orders and says nothing whatsoever about the other 38% parked at 100 µs.
+
+**A median can be an accurate summary of a distribution that does not exist.** Nothing in this system takes ~228 ns *and* is typical; the typical order either takes 160 ns or 100 µs. This is the strongest form of the percentiles-over-mean argument in this file: there, the mean was merely pulled off-centre by a tail; here a headline percentile is precisely correct and still completely misleading, and only the shape shows it.
+
 **Caveat — the observer effect is 18% of capacity.** Capacity has to be measured at the slowest stage *including instrumentation*: `match()` ~91 ns + `pop()` ~36 ns (acquire load + release store = inter-core cache-line transfer) + 2× `rdtsc::now()` ~27 ns ≈ 154 ns when each part is timed separately; timing the loop as a whole gives 121 ns, the difference being the extra `rdtsc` pairs the piecewise measurement itself adds. Timing `match()` alone gives 91 ns and overstates capacity by ~70%; the first corrected run used that number, so every level above ~60% silently requested a rate the consumer could never serve, and all of them returned the identical "queue is full" latency (~131 µs flat from 50% to 95%). The flat plateau, not the absolute values, was the clue.
