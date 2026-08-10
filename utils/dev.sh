@@ -4,6 +4,7 @@
 #   ./utils/dev.sh bench     build, stabilize the machine, run benchmarks (perf)
 #   ./utils/dev.sh bench-latency  build, stabilize, run the rdtsc latency bench (p50/p99/p99.9)
 #   ./utils/dev.sh bench-pipeline build, stabilize, run the end-to-end push->matched latency bench
+#   ./utils/dev.sh bench-reps     repeat a bench N times, report medians + run-to-run spread
 #   ./utils/dev.sh asan      build the asan target and run it (memory / UB checks)
 #   ./utils/dev.sh tsan      build the concurrent SPSC test under ThreadSanitizer (data races)
 #
@@ -91,6 +92,14 @@ case "$cmd" in
         taskset -c 0,2 ./build/bench_pipeline "$@"
         ;;
 
+    bench-reps)
+        # Repeat a bench and report medians + run-to-run spread. A single run
+        # cannot tell you which of its numbers are stable; the spread column can.
+        #   ./utils/dev.sh bench-reps                  5 reps of bench-pipeline
+        #   ./utils/dev.sh bench-reps -n 3 -c bench-latency
+        ./utils/bench_reps.py "$@"
+        ;;
+
     asan)
         # asan is for catching memory/UB bugs, not timing - no preflight/governor/taskset
         cmake -B build_asan -DCMAKE_BUILD_TYPE=Debug
@@ -108,7 +117,7 @@ case "$cmd" in
         ;;
 
     *)
-        echo "usage: $0 {test|bench|bench-spsc|bench-latency|bench-pipeline|asan|tsan} [extra args...]"
+        echo "usage: $0 {test|bench|bench-spsc|bench-latency|bench-pipeline|bench-reps|asan|tsan} [extra args...]"
         exit 2
         ;;
 esac

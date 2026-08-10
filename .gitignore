@@ -5,3 +5,7 @@ build_tsan/
 .cache/
 tmp/
 docs/
+
+# Python bytecode cache (utils/bench_reps.py)
+__pycache__/
+*.py[cod]
