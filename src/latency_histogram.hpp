@@ -28,6 +28,7 @@
 #include <cmath>    // std::pow  - log-spaced rows in print()
 #include <cstdio>   // std::printf / std::snprintf - print()
 #include <string>   // std::string - building the bars in print()
+#include <optional>
 
 class LatencyHistogram {
 public:
@@ -58,23 +59,15 @@ public:
     uint64_t percentile(double p) const {
         if (m_count == 0) return 0;
 
-        // Which ranked sample are we looking for (1-based). clamp to [1, count].
-        uint64_t rank = static_cast<uint64_t>(p / 100.0 * static_cast<double>(m_count));
-        if (rank < 1) rank = 1;
-        if (rank > m_count) rank = m_count;
+        std::optional<std::size_t> idx = percentile_index(p);
+        if (!idx.has_value())
+            return m_max_ns;
 
-        uint64_t cumulative = 0;
-        for (std::size_t i = 0; i < m_buckets.size(); ++i) {
-            cumulative += m_buckets[i];
-            if (cumulative >= rank) {
-                // Overflow bucket
-                if (i == m_buckets.size() - 1)
-                    return m_max_ns;
-                // Report the bucket's representative value
-                return static_cast<uint64_t>((i + 1) * m_bucket_ns - 1);
-            }
-        }
-        return m_max_ns; // unreachable when count > 0, but keeps the compiler happy
+        return static_cast<uint64_t>(idx.value() * m_bucket_ns - 1);
+    }
+
+    bool saturated(double p) const {
+        return !percentile_index(p).has_value();
     }
 
     uint64_t count() const { return m_count; }
@@ -193,6 +186,27 @@ private:
         return b;
     }
 
+    std::optional<std::size_t> percentile_index(double p) const {
+        if (m_count == 0) return {};
+
+        // Which ranked sample are we looking for (1-based). clamp to [1, count].
+        uint64_t rank = static_cast<uint64_t>(p / 100.0 * static_cast<double>(m_count));
+        if (rank < 1) rank = 1;
+        if (rank > m_count) rank = m_count;
+
+        uint64_t cumulative = 0;
+        for (std::size_t i = 0; i < m_buckets.size(); ++i) {
+            cumulative += m_buckets[i];
+            if (cumulative >= rank) {
+                // Overflow bucket
+                if (i == m_buckets.size() - 1)
+                    return {};
+
+                return i + 1;
+            }
+        }
+        return {};
+    }
 
     uint64_t m_bucket_ns;
     uint64_t m_max_ns;

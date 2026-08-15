@@ -173,13 +173,22 @@ LatencyHistogram run_at_load(double tpns, double load, double service_ns) {
     const double achieved_mps =
         static_cast<double>(TOTAL) / rdtsc::to_ns(prod_end - prod_begin, tpns) * 1000.0;
 
-    std::printf("%4.0f%% | %6.2f | %6.2f | %6lu | %7lu | %7lu | %8lu | %9.1f\n",
+    char p50[64];
+    std::sprintf(p50, "%6lu", static_cast<unsigned long>(hist.percentile(50.0)));
+
+    char p99[64];
+    std::sprintf(p99, "%7lu", static_cast<unsigned long>(hist.percentile(99.0)));
+
+    char p999[64];
+    std::sprintf(p999, "%7lu", static_cast<unsigned long>(hist.percentile(99.9)));
+
+    std::printf("%4.0f%% | %6.2f | %6.2f | %6s | %7s | %7s | %8lu | %9.1f\n",
                 load * 100.0,
                 1000.0 / interval_ns,                                 // target M orders/s
                 achieved_mps,                                         // actually delivered
-                static_cast<unsigned long>(hist.percentile(50.0)),
-                static_cast<unsigned long>(hist.percentile(99.0)),
-                static_cast<unsigned long>(hist.percentile(99.9)),
+                hist.saturated(50.0) ? "-" : p50,
+                hist.saturated(99.0) ? "-" : p99,
+                hist.saturated(99.9) ? "-" : p999,
                 static_cast<unsigned long>(hist.max()),
                 hist.mean());
 

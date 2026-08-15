@@ -76,6 +76,29 @@ TEST(LatencyHistogram, BucketResolution) {
     EXPECT_EQ(h.min(), 23u); // but exact min is still kept
 }
 
+TEST(LatencyHistogram, SaturatedFalse) {
+    LatencyHistogram h(/*max_ns=*/1000, /*bucket_ns=*/1);
+    h.record(500);
+
+    EXPECT_FALSE(h.saturated(50.0)); 
+}
+
+TEST(LatencyHistogram, SaturatedTrue) {
+    LatencyHistogram h(/*max_ns=*/1000, /*bucket_ns=*/1);
+    h.record(5000);
+
+    EXPECT_TRUE(h.saturated(100.0));    
+}
+
+TEST(LatencyHistogram, SaturatedMix) {
+    LatencyHistogram h(/*max_ns=*/1000, /*bucket_ns=*/1);
+    for (int i = 0; i < 999; ++i) h.record(500); 
+    h.record(5000);                                // 0.1% in overflow
+
+    EXPECT_FALSE(h.saturated(50.0));
+    EXPECT_TRUE(h.saturated(100.0));
+}
+
 // --- print() -----------------------------------------------------------------
 // print() exists to show the SHAPE of a distribution, which percentiles cannot:
 // a bimodal distribution reads as an ordinary set of percentiles. These tests
